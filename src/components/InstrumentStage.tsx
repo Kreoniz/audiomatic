@@ -5,7 +5,18 @@ import type { InstrumentSettings } from '../types';
 
 const TAU = Math.PI * 2;
 const SPEED_RATIOS = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.125, 2.4, 2.667, 2.875, 3.125];
-const CHORD_ROOTS = [0, 5, 3, 4];
+const CHORD_PROGRESSIONS = {
+  orbit: [0, 5, 3, 4],
+  nocturne: [0, 4, 2, 5],
+  sunrise: [0, 3, 4, 0],
+} as const;
+const ARPEGGIO = [0, 2, 4, 2, 0, 4, 2, 1];
+const SCALE_LENGTHS = { pentatonic: 5, minor: 7, major: 7 } as const;
+const RHYTHMS = {
+  sparse: { subdivisions: 1, bassEvery: 4, melodyEvery: 2 },
+  flowing: { subdivisions: 2, bassEvery: 2, melodyEvery: 1 },
+  pulse: { subdivisions: 4, bassEvery: 1, melodyEvery: 2 },
+} as const;
 
 interface InstrumentStageProps {
   settings: InstrumentSettings;
@@ -22,6 +33,7 @@ export interface InstrumentStageHandle {
 
 interface TrailPoint { x: number; y: number; alpha: number }
 interface Pulse { x: number; y: number; radius: number; alpha: number; color: string }
+interface QueuedNote { degree: number; intensity: number; pan: number }
 interface Orbiter {
   angle: number;
   direction: number;
@@ -69,10 +81,12 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
         trail: [],
       }));
       const pulses: Pulse[] = [];
+      const noteQueue: QueuedNote[] = [];
       let raf = 0;
       let previous = performance.now();
       let musicTime = 0;
-      let lastChord = -1;
+      let lastHarmony = '';
+      let lastStep = -1;
       let dpr = 1;
       let displayWidth = 1;
       let displayHeight = 1;
@@ -195,7 +209,9 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
           context.stroke();
         });
 
-        const chordIndex = Math.floor(musicTime / 16000) % CHORD_ROOTS.length;
+        const bpm = 62 + current.energy * 0.78;
+        const beatMs = 60000 / bpm;
+        const chordIndex = Math.floor(musicTime / (beatMs * 8)) % 4;
         const centerGlow = context.createRadialGradient(centerX - 12, centerY - 14, 2, centerX, centerY, Math.max(48, innerRadius * 0.58));
         centerGlow.addColorStop(0, colors.text);
         centerGlow.addColorStop(0.18, colors.accent);
@@ -212,7 +228,7 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
         context.fillText(`PHASE 0${chordIndex + 1}`, centerX, centerY - 2);
         context.globalAlpha = 0.65;
         context.font = '8px ui-monospace, monospace';
-        context.fillText(`${active.length} VOICES`, centerX, centerY + 13);
+        context.fillText(`${Math.round(bpm)} BPM · ${active.length} VOICES`, centerX, centerY + 13);
         context.globalAlpha = 1;
 
         for (let index = pulses.length - 1; index >= 0; index -= 1) {
@@ -237,10 +253,58 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
 
         if (!pausedRef.current) {
           musicTime += frameTime;
-          const chordIndex = Math.floor(musicTime / 16000);
-          if (current.soundEnabled && audio.ready && chordIndex !== lastChord) {
-            lastChord = chordIndex;
-            audio.playChord(CHORD_ROOTS[chordIndex % CHORD_ROOTS.length], current.scale, current.theme);
+          const bpm = 62 + current.energy * 0.78;
+          const beatMs = 60000 / bpm;
+          const rhythm = RHYTHMS[current.rhythm];
+          const stepMs = beatMs / rhythm.subdivisions;
+          const stepIndex = Math.floor(musicTime / stepMs);
+          const beatIndex = Math.floor(stepIndex / rhythm.subdivisions);
+          const chordIndex = Math.floor(beatIndex / 8);
+          const progression = CHORD_PROGRESSIONS[current.progression];
+          const chordRoot = progression[chordIndex % progression.length];
+
+          if (current.soundEnabled && audio.ready) {
+            audio.setSpace(current.space);
+            const harmonySignature = `${chordIndex}:${current.progression}:${current.scale}:${current.key}:${current.theme}`;
+            if (current.padEnabled && harmonySignature !== lastHarmony) {
+              lastHarmony = harmonySignature;
+              audio.playChord(
+                chordRoot,
+                current.scale,
+                current.key,
+                current.theme,
+                beatMs * 8 / 1000 + 1.4,
+                current.warmth,
+              );
+            } else if (!current.padEnabled) {
+              lastHarmony = '';
+            }
+
+            if (stepIndex !== lastStep) {
+              lastStep = stepIndex;
+              if (current.bassEnabled && stepIndex % (rhythm.subdivisions * rhythm.bassEvery) === 0) {
+                audio.playBass(chordRoot, current.scale, current.key, current.theme, current.warmth);
+              }
+
+              const queued = noteQueue.shift();
+              const shouldFill = stepIndex % rhythm.melodyEvery === 0;
+              if (queued || shouldFill) {
+                const phrasePosition = stepIndex % ARPEGGIO.length;
+                const scaleLength = SCALE_LENGTHS[current.scale];
+                const degree = queued ? queued.degree % scaleLength : ARPEGGIO[phrasePosition];
+                const octaveLift = phrasePosition === 4 || phrasePosition === 5 ? scaleLength : 0;
+                audio.playMelody(
+                  chordRoot + degree + octaveLift,
+                  queued?.intensity ?? 0.34,
+                  current.scale,
+                  current.key,
+                  current.theme,
+                  queued?.pan ?? Math.sin(stepIndex * 1.7) * 0.42,
+                  current.noteLength,
+                  current.warmth,
+                );
+              }
+            }
           }
 
           const baseSpeed = 0.000105 + current.energy * 0.0000019;
@@ -256,10 +320,12 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
               const x = centerX + Math.cos(orbiter.angle) * radius;
               const y = centerY + Math.sin(orbiter.angle) * radius;
               const palette = THEMES[current.theme].colors;
-              const chordRoot = CHORD_ROOTS[Math.floor(musicTime / 16000) % CHORD_ROOTS.length];
-              const note = chordRoot + orbiter.note;
-              if (current.soundEnabled) {
-                audio.play(note, 0.48 + index / count * 0.32, current.scale, current.theme, x / displayWidth * 1.6 - 0.8);
+              if (noteQueue.length < 12) {
+                noteQueue.push({
+                  degree: orbiter.note,
+                  intensity: 0.48 + index / count * 0.3,
+                  pan: x / displayWidth * 1.5 - 0.75,
+                });
               }
               pulses.push({ x, y, radius: orbiter.size + 5, alpha: 0.84, color: index % 2 ? palette.secondary : palette.primary });
             }

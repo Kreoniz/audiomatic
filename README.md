@@ -5,7 +5,8 @@ A responsive, browser-only orbital clock for creating generative audiovisual per
 ## What is included
 
 - Perpetual concentric motion with near-rational orbital speeds and gentle phase drift
-- Slow harmonic progression with polyrhythmic note triggers
+- Tempo-quantized orbit events, evolving arpeggios, bass pulse, and overlapping harmony
+- Adjustable key, scale, progression, rhythm, warmth, space, and note length
 - Collision-driven Web Audio synthesis
 - Luminous, tactile, and editorial art directions
 - Curated energy, density, trail, scale, and sound controls

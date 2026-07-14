@@ -2,10 +2,11 @@ interface RangeControlProps {
   label: string;
   hint: string;
   value: number;
+  valueLabel?: string;
   onChange: (value: number) => void;
 }
 
-export function RangeControl({ label, hint, value, onChange }: RangeControlProps) {
+export function RangeControl({ label, hint, value, valueLabel, onChange }: RangeControlProps) {
   return (
     <label className="range-control">
       <span className="range-control__copy">
@@ -20,7 +21,7 @@ export function RangeControl({ label, hint, value, onChange }: RangeControlProps
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
         />
-        <output>{value}</output>
+        <output>{valueLabel ?? value}</output>
       </span>
     </label>
   );

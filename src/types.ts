@@ -1,5 +1,8 @@
 export type ThemeId = 'luminous' | 'tactile' | 'editorial';
 export type ScaleId = 'pentatonic' | 'minor' | 'major';
+export type KeyId = 'C' | 'D' | 'Eb' | 'F' | 'G' | 'A';
+export type ProgressionId = 'orbit' | 'nocturne' | 'sunrise';
+export type RhythmId = 'sparse' | 'flowing' | 'pulse';
 
 export interface InstrumentSettings {
   theme: ThemeId;
@@ -8,6 +11,14 @@ export interface InstrumentSettings {
   drift: number;
   trails: number;
   scale: ScaleId;
+  key: KeyId;
+  progression: ProgressionId;
+  rhythm: RhythmId;
+  warmth: number;
+  space: number;
+  noteLength: number;
+  bassEnabled: boolean;
+  padEnabled: boolean;
   soundEnabled: boolean;
 }
 
@@ -35,5 +46,13 @@ export const DEFAULT_SETTINGS: InstrumentSettings = {
   drift: 34,
   trails: 66,
   scale: 'pentatonic',
+  key: 'C',
+  progression: 'orbit',
+  rhythm: 'flowing',
+  warmth: 62,
+  space: 54,
+  noteLength: 58,
+  bassEnabled: true,
+  padEnabled: true,
   soundEnabled: true,
 };

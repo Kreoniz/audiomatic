@@ -4,7 +4,15 @@ import { RangeControl } from './components/RangeControl';
 import { AudioEngine } from './lib/audio';
 import { canRecord, downloadBlob, recordCanvas } from './lib/recording';
 import { THEMES } from './lib/themes';
-import { DEFAULT_SETTINGS, type InstrumentSettings, type ScaleId, type ThemeId } from './types';
+import {
+  DEFAULT_SETTINGS,
+  type InstrumentSettings,
+  type KeyId,
+  type ProgressionId,
+  type RhythmId,
+  type ScaleId,
+  type ThemeId,
+} from './types';
 
 const STORAGE_KEY = 'audiomatic:settings:v1';
 
@@ -58,7 +66,10 @@ export function App() {
     }
 
     try {
-      if (settings.soundEnabled) await audio.start();
+      if (settings.soundEnabled) {
+        await audio.start();
+        setAudioReady(true);
+      }
       setPaused(false);
       setRecording(duration);
       const blob = await recordCanvas({
@@ -145,11 +156,29 @@ export function App() {
           </div>
 
           <div className="ranges">
-            <RangeControl label="Tempo" hint="Speed of the orbits" value={settings.energy} onChange={(energy) => patchSettings({ energy })} />
-            <RangeControl label="Voices" hint="Number of orbiting marbles" value={settings.density} onChange={(density) => patchSettings({ density })} />
-            <RangeControl label="Drift" hint="Predictability versus surprise" value={settings.drift} onChange={(drift) => patchSettings({ drift })} />
+            <RangeControl label="Tempo" hint="Musical and orbital pulse" value={settings.energy} valueLabel={`${Math.round(62 + settings.energy * 0.78)} bpm`} onChange={(energy) => patchSettings({ energy })} />
+            <RangeControl label="Voices" hint="Number of orbiting marbles" value={settings.density} valueLabel={`${5 + Math.round(settings.density / 14)}`} onChange={(density) => patchSettings({ density })} />
+            <RangeControl label="Drift" hint="Predictability versus surprise" value={settings.drift} valueLabel={`${settings.drift}%`} onChange={(drift) => patchSettings({ drift })} />
             <RangeControl label="Afterglow" hint="Length of light trails" value={settings.trails} onChange={(trails) => patchSettings({ trails })} />
           </div>
+
+          <div className="panel-divider" />
+          <div className="panel-heading panel-heading--compact">
+            <div><span className="eyebrow">MUSIC SYSTEM</span><h2>Shape the score</h2></div>
+            <span className="panel-index">03</span>
+          </div>
+
+          <label className="select-control">
+            <span><strong>Key</strong><small>Tonal center of the piece</small></span>
+            <select value={settings.key} onChange={(event) => patchSettings({ key: event.target.value as KeyId })}>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="Eb">E♭</option>
+              <option value="F">F</option>
+              <option value="G">G</option>
+              <option value="A">A</option>
+            </select>
+          </label>
 
           <label className="select-control">
             <span><strong>Musical scale</strong><small>Notes stay harmonically related</small></span>
@@ -160,8 +189,44 @@ export function App() {
             </select>
           </label>
 
+          <label className="select-control">
+            <span><strong>Progression</strong><small>Slow harmonic movement</small></span>
+            <select value={settings.progression} onChange={(event) => patchSettings({ progression: event.target.value as ProgressionId })}>
+              <option value="orbit">Orbit</option>
+              <option value="nocturne">Nocturne</option>
+              <option value="sunrise">Sunrise</option>
+            </select>
+          </label>
+
+          <label className="select-control">
+            <span><strong>Rhythm</strong><small>Density of the shared beat grid</small></span>
+            <select value={settings.rhythm} onChange={(event) => patchSettings({ rhythm: event.target.value as RhythmId })}>
+              <option value="sparse">Sparse</option>
+              <option value="flowing">Flowing</option>
+              <option value="pulse">Pulse</option>
+            </select>
+          </label>
+
+          <div className="ranges sound-ranges">
+            <RangeControl label="Warmth" hint="Soft versus crystalline" value={settings.warmth} valueLabel={`${settings.warmth}%`} onChange={(warmth) => patchSettings({ warmth })} />
+            <RangeControl label="Space" hint="Echo and atmosphere" value={settings.space} valueLabel={`${settings.space}%`} onChange={(space) => patchSettings({ space })} />
+            <RangeControl label="Note length" hint="Plucked versus connected" value={settings.noteLength} valueLabel={`${settings.noteLength}%`} onChange={(noteLength) => patchSettings({ noteLength })} />
+          </div>
+
           <label className="toggle-control">
-            <span><strong>Sound engine</strong><small>Collision-driven synthesis</small></span>
+            <span><strong>Harmonic bed</strong><small>Continuous overlapping chords</small></span>
+            <input type="checkbox" checked={settings.padEnabled} onChange={(event) => patchSettings({ padEnabled: event.target.checked })} />
+            <i />
+          </label>
+
+          <label className="toggle-control">
+            <span><strong>Bass pulse</strong><small>Anchors the orbital rhythm</small></span>
+            <input type="checkbox" checked={settings.bassEnabled} onChange={(event) => patchSettings({ bassEnabled: event.target.checked })} />
+            <i />
+          </label>
+
+          <label className="toggle-control">
+            <span><strong>Sound engine</strong><small>Quantized generative score</small></span>
             <input
               type="checkbox"
               checked={settings.soundEnabled}
@@ -173,7 +238,7 @@ export function App() {
           <div className="panel-divider" />
           <div className="panel-heading panel-heading--compact">
             <div><span className="eyebrow">CAPTURE</span><h2>Record the moment</h2></div>
-            <span className="panel-index">03</span>
+            <span className="panel-index">04</span>
           </div>
           <div className="record-copy">
             <span>WEBM · 60 FPS · LIVE AUDIO</span>
