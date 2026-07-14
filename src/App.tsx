@@ -85,15 +85,15 @@ export function App() {
           <span>AUDIOMATIC</span>
         </a>
         <div className="topbar__meta">
-          <span>MARBLE ORCHESTRA</span>
+          <span>ORBITAL CLOCK</span>
           <span className="status-pill"><i /> GENERATIVE</span>
         </div>
       </header>
 
       <section className="hero-copy">
-        <p className="eyebrow">PHYSICS, COMPOSED</p>
-        <h1>Make gravity<br /><em>sound beautiful.</em></h1>
-        <p className="lede">Shape a living score of glass, timber and light—then capture the performance as your own.</p>
+        <p className="eyebrow">TIME, COMPOSED</p>
+        <h1>Make motion<br /><em>sound inevitable.</em></h1>
+        <p className="lede">A perpetual clock of glass and light: familiar enough to follow, alive enough to never quite repeat.</p>
       </section>
 
       <section className="workspace">
@@ -145,8 +145,9 @@ export function App() {
           </div>
 
           <div className="ranges">
-            <RangeControl label="Energy" hint="Gravity & velocity" value={settings.energy} onChange={(energy) => patchSettings({ energy })} />
-            <RangeControl label="Density" hint="Number of performers" value={settings.density} onChange={(density) => patchSettings({ density })} />
+            <RangeControl label="Tempo" hint="Speed of the orbits" value={settings.energy} onChange={(energy) => patchSettings({ energy })} />
+            <RangeControl label="Voices" hint="Number of orbiting marbles" value={settings.density} onChange={(density) => patchSettings({ density })} />
+            <RangeControl label="Drift" hint="Predictability versus surprise" value={settings.drift} onChange={(drift) => patchSettings({ drift })} />
             <RangeControl label="Afterglow" hint="Length of light trails" value={settings.trails} onChange={(trails) => patchSettings({ trails })} />
           </div>
 

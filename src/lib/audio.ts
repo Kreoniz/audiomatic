@@ -22,14 +22,23 @@ export class AudioEngine {
       const master = context.createGain();
       const compressor = context.createDynamicsCompressor();
       const recorder = context.createMediaStreamDestination();
+      const delay = context.createDelay(1);
+      const feedback = context.createGain();
+      const wet = context.createGain();
 
       master.gain.value = 0.58;
+      delay.delayTime.value = 0.285;
+      feedback.gain.value = 0.19;
+      wet.gain.value = 0.16;
       compressor.threshold.value = -16;
       compressor.knee.value = 18;
       compressor.ratio.value = 5;
       compressor.attack.value = 0.006;
       compressor.release.value = 0.22;
       master.connect(compressor);
+      master.connect(delay);
+      delay.connect(feedback).connect(delay);
+      delay.connect(wet).connect(compressor);
       compressor.connect(context.destination);
       compressor.connect(recorder);
 
@@ -45,6 +54,14 @@ export class AudioEngine {
     return this.recorder?.stream.getAudioTracks() ?? [];
   }
 
+  private frequencyForDegree(degree: number, scale: ScaleId, baseMidi = 48) {
+    const notes = SCALES[scale];
+    const octave = Math.floor(degree / notes.length);
+    const normalizedDegree = ((degree % notes.length) + notes.length) % notes.length;
+    const midi = baseMidi + notes[normalizedDegree] + octave * 12;
+    return 440 * 2 ** ((midi - 69) / 12);
+  }
+
   play(note: number, intensity: number, scale: ScaleId, theme: ThemeId, pan = 0) {
     if (!this.context || !this.master || this.context.state !== 'running') return;
 
@@ -53,8 +70,7 @@ export class AudioEngine {
     if (now - lastPlayed < 0.065) return;
     this.lastNotes.set(note, now);
 
-    const semitone = SCALES[scale][note % SCALES[scale].length] + 48;
-    const frequency = 440 * 2 ** ((semitone - 69) / 12);
+    const frequency = this.frequencyForDegree(note, scale);
     const oscillator = this.context.createOscillator();
     const overtone = this.context.createOscillator();
     const voice = this.context.createGain();
@@ -89,5 +105,32 @@ export class AudioEngine {
     overtone.start(now);
     oscillator.stop(now + timbre.decay + 0.05);
     overtone.stop(now + timbre.decay + 0.05);
+  }
+
+  playChord(root: number, scale: ScaleId, theme: ThemeId) {
+    if (!this.context || !this.master || this.context.state !== 'running') return;
+
+    const now = this.context.currentTime;
+    const filter = this.context.createBiquadFilter();
+    const chordGain = this.context.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.value = theme === 'tactile' ? 1150 : theme === 'editorial' ? 1550 : 2100;
+    filter.Q.value = 0.65;
+    chordGain.gain.setValueAtTime(0.0001, now);
+    chordGain.gain.exponentialRampToValueAtTime(0.045, now + 1.4);
+    chordGain.gain.exponentialRampToValueAtTime(0.0001, now + 17.5);
+    chordGain.connect(filter).connect(this.master);
+
+    [0, 2, 4].forEach((offset, index) => {
+      const oscillator = this.context!.createOscillator();
+      const voiceGain = this.context!.createGain();
+      oscillator.type = theme === 'tactile' ? 'triangle' : 'sine';
+      oscillator.frequency.value = this.frequencyForDegree(root + offset, scale, 43);
+      oscillator.detune.value = index === 1 ? 3 : index === 2 ? -4 : 0;
+      voiceGain.gain.value = index === 0 ? 0.62 : 0.42;
+      oscillator.connect(voiceGain).connect(chordGain);
+      oscillator.start(now);
+      oscillator.stop(now + 17.7);
+    });
   }
 }

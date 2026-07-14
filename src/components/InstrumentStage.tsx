@@ -1,12 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import Matter from 'matter-js';
 import type { AudioEngine } from '../lib/audio';
 import { THEMES } from '../lib/themes';
 import type { InstrumentSettings } from '../types';
 
-const { Bodies, Body, Composite, Engine, Events } = Matter;
-const WORLD = { width: 1200, height: 720 };
-const BALL_LABEL = 'audiomatic-ball';
+const TAU = Math.PI * 2;
+const SPEED_RATIOS = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.125, 2.4, 2.667, 2.875, 3.125];
+const CHORD_ROOTS = [0, 5, 3, 4];
 
 interface InstrumentStageProps {
   settings: InstrumentSettings;
@@ -23,6 +22,16 @@ export interface InstrumentStageHandle {
 
 interface TrailPoint { x: number; y: number; alpha: number }
 interface Pulse { x: number; y: number; radius: number; alpha: number; color: string }
+interface Orbiter {
+  angle: number;
+  direction: number;
+  gateCount: number;
+  note: number;
+  phase: number;
+  ratio: number;
+  size: number;
+  trail: TrailPoint[];
+}
 
 function seededRandom(seed: number) {
   let state = seed >>> 0;
@@ -48,93 +57,25 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
       const context = canvas.getContext('2d');
       if (!context) return;
 
-      const engine = Engine.create({ gravity: { x: 0, y: 0.72, scale: 0.001 } });
       const random = seededRandom(seed);
-      const trails = new Map<number, TrailPoint[]>();
+      const orbiters: Orbiter[] = SPEED_RATIOS.map((ratio, index) => ({
+        angle: random() * TAU,
+        direction: index % 4 === 3 ? -1 : 1,
+        gateCount: index % 3 === 0 ? 2 : 1,
+        note: index,
+        phase: random() * TAU,
+        ratio: ratio * (0.995 + random() * 0.01),
+        size: 10 + random() * 7,
+        trail: [],
+      }));
       const pulses: Pulse[] = [];
       let raf = 0;
       let previous = performance.now();
-      let accumulator = 0;
-      let spawnElapsed = 0;
+      let musicTime = 0;
+      let lastChord = -1;
       let dpr = 1;
       let displayWidth = 1;
       let displayHeight = 1;
-
-      const boundaryOptions = { isStatic: true, restitution: 0.88, friction: 0.08, label: 'boundary' };
-      const boundaries = [
-        Bodies.rectangle(WORLD.width / 2, WORLD.height + 35, WORLD.width + 120, 70, boundaryOptions),
-        Bodies.rectangle(-35, WORLD.height / 2, 70, WORLD.height * 2, boundaryOptions),
-        Bodies.rectangle(WORLD.width + 35, WORLD.height / 2, 70, WORLD.height * 2, boundaryOptions),
-      ];
-
-      const railData = [
-        [242, 186, 250, 15, 0.18],
-        [925, 214, 250, 15, -0.2],
-        [382, 390, 230, 15, -0.22],
-        [820, 440, 250, 15, 0.2],
-        [588, 588, 320, 15, 0.03],
-      ] as const;
-      const rails = railData.map(([x, y, width, height, angle]) =>
-        Bodies.rectangle(x, y, width, height, { ...boundaryOptions, angle, label: 'rail', chamfer: { radius: 7 } }),
-      );
-
-      const bumperData = [
-        [360, 245, 0], [515, 190, 1], [680, 230, 2], [836, 305, 3],
-        [510, 356, 4], [668, 385, 5], [415, 505, 6], [728, 530, 2], [930, 520, 4],
-      ] as const;
-      const bumpers = bumperData.map(([x, y, note]) => {
-        const body = Bodies.circle(x, y, 25, {
-          isStatic: true,
-          restitution: 1.12,
-          friction: 0.01,
-          label: `note-${note}`,
-        });
-        body.plugin = { note };
-        return body;
-      });
-      Composite.add(engine.world, [...boundaries, ...rails, ...bumpers]);
-
-      const spawnBall = () => {
-        const density = settingsRef.current.density;
-        const currentBalls = Composite.allBodies(engine.world).filter((body) => body.label === BALL_LABEL);
-        const maxBalls = 5 + Math.round(density / 6);
-        if (currentBalls.length >= maxBalls) return;
-
-        const lanes = [285, 570, 890];
-        const x = lanes[Math.floor(random() * lanes.length)] + (random() - 0.5) * 60;
-        const radius = 12 + random() * 8;
-        const ball = Bodies.circle(x, -30, radius, {
-          label: BALL_LABEL,
-          restitution: 0.82,
-          friction: 0.012,
-          frictionAir: 0.0018,
-          density: 0.0018,
-        });
-        Body.setVelocity(ball, { x: (random() - 0.5) * 1.8, y: 1 + random() * 0.8 });
-        Composite.add(engine.world, ball);
-      };
-
-      Events.on(engine, 'collisionStart', (event) => {
-        event.pairs.forEach(({ bodyA, bodyB, collision }) => {
-          const noteBody = bodyA.label.startsWith('note-') ? bodyA : bodyB.label.startsWith('note-') ? bodyB : null;
-          const ball = bodyA.label === BALL_LABEL ? bodyA : bodyB.label === BALL_LABEL ? bodyB : null;
-          if (!noteBody || !ball) return;
-          const note = Number((noteBody.plugin as { note?: number }).note ?? 0);
-          const speed = Math.min(1, ball.speed / 13);
-          const current = settingsRef.current;
-          if (current.soundEnabled) {
-            audio.play(note, speed, current.scale, current.theme, noteBody.position.x / 600 - 1);
-          }
-          const palette = THEMES[current.theme].colors;
-          pulses.push({
-            x: collision.supports[0]?.x ?? noteBody.position.x,
-            y: collision.supports[0]?.y ?? noteBody.position.y,
-            radius: 24,
-            alpha: 0.85,
-            color: note % 2 ? palette.secondary : palette.primary,
-          });
-        });
-      });
 
       const resize = () => {
         const rect = canvas.getBoundingClientRect();
@@ -148,181 +89,206 @@ export const InstrumentStage = forwardRef<InstrumentStageHandle, InstrumentStage
       observer.observe(canvas);
       resize();
 
+      const getLayout = (count: number) => {
+        const centerX = displayWidth / 2;
+        const centerY = displayHeight / 2;
+        const outerRadius = Math.min(displayWidth, displayHeight) * 0.405;
+        const innerRadius = Math.max(58, outerRadius * 0.28);
+        const step = count > 1 ? (outerRadius - innerRadius) / (count - 1) : 0;
+        return { centerX, centerY, outerRadius, innerRadius, step };
+      };
+
       const draw = () => {
         const current = settingsRef.current;
         const theme = THEMES[current.theme];
         const colors = theme.colors;
-        const scale = Math.min(displayWidth / WORLD.width, displayHeight / WORLD.height);
-        const offsetX = (displayWidth - WORLD.width * scale) / 2;
-        const offsetY = (displayHeight - WORLD.height * scale) / 2;
+        const count = Math.min(orbiters.length, 5 + Math.round(current.density / 14));
+        const active = orbiters.slice(0, count);
+        const { centerX, centerY, outerRadius, innerRadius, step } = getLayout(count);
 
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const background = context.createRadialGradient(
-          displayWidth * 0.52, displayHeight * 0.35, 0,
-          displayWidth * 0.52, displayHeight * 0.35, displayWidth * 0.8,
-        );
+        const background = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(displayWidth, displayHeight) * 0.72);
         background.addColorStop(0, colors.backgroundGlow);
-        background.addColorStop(0.72, colors.background);
+        background.addColorStop(0.62, colors.background);
+        background.addColorStop(1, colors.background);
         context.fillStyle = background;
         context.fillRect(0, 0, displayWidth, displayHeight);
 
         context.save();
-        context.translate(offsetX, offsetY);
-        context.scale(scale, scale);
-
-        context.globalAlpha = current.theme === 'editorial' ? 0.2 : 0.12;
+        context.translate(centerX, centerY);
         context.strokeStyle = colors.muted;
-        context.lineWidth = 1;
-        for (let x = 40; x < WORLD.width; x += 80) {
-          context.beginPath(); context.moveTo(x, 0); context.lineTo(x, WORLD.height); context.stroke();
-        }
-        for (let y = 40; y < WORLD.height; y += 80) {
-          context.beginPath(); context.moveTo(0, y); context.lineTo(WORLD.width, y); context.stroke();
+        context.globalAlpha = current.theme === 'editorial' ? 0.36 : 0.2;
+        for (let tick = 0; tick < 60; tick += 1) {
+          const angle = tick / 60 * TAU - Math.PI / 2;
+          const major = tick % 5 === 0;
+          const inner = outerRadius + (major ? 17 : 22);
+          const outer = outerRadius + 28;
+          context.lineWidth = major ? 1.8 : 0.8;
+          context.beginPath();
+          context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          context.stroke();
         }
         context.globalAlpha = 1;
+        context.strokeStyle = colors.surfaceEdge;
+        context.lineWidth = current.theme === 'editorial' ? 2 : 1.2;
+        context.beginPath(); context.arc(0, 0, outerRadius + 34, 0, TAU); context.stroke();
+        context.restore();
 
-        rails.forEach((rail) => {
-          context.save();
-          context.translate(rail.position.x, rail.position.y);
-          context.rotate(rail.angle);
-          context.shadowColor = colors.surfaceEdge;
-          context.shadowBlur = current.theme === 'luminous' ? 20 : 4;
-          context.fillStyle = colors.surface;
+        active.forEach((orbiter, index) => {
+          const radius = innerRadius + step * index;
+          const x = centerX + Math.cos(orbiter.angle) * radius;
+          const y = centerY + Math.sin(orbiter.angle) * radius;
+          const alternating = index % 3 === 0 ? colors.accent : index % 2 ? colors.secondary : colors.primary;
+
+          context.globalAlpha = 0.22 + index / count * 0.15;
           context.strokeStyle = colors.surfaceEdge;
-          context.lineWidth = current.theme === 'editorial' ? 3 : 2;
-          context.beginPath();
-          context.roundRect(-railData[rails.indexOf(rail)][2] / 2, -8, railData[rails.indexOf(rail)][2], 16, 8);
-          context.fill(); context.stroke();
-          context.restore();
-        });
+          context.lineWidth = current.theme === 'editorial' ? 1.25 : 0.8;
+          context.beginPath(); context.arc(centerX, centerY, radius, 0, TAU); context.stroke();
 
-        bumpers.forEach((bumper, index) => {
-          const note = Number((bumper.plugin as { note?: number }).note ?? 0);
-          const alternating = note % 2 ? colors.secondary : colors.primary;
-          const halo = context.createRadialGradient(
-            bumper.position.x - 7, bumper.position.y - 8, 2,
-            bumper.position.x, bumper.position.y, 36,
-          );
-          halo.addColorStop(0, colors.text);
-          halo.addColorStop(0.28, alternating);
-          halo.addColorStop(1, colors.surface);
-          context.shadowColor = alternating;
-          context.shadowBlur = current.theme === 'luminous' ? 30 : 7;
-          context.fillStyle = halo;
-          context.beginPath(); context.arc(bumper.position.x, bumper.position.y, 25, 0, Math.PI * 2); context.fill();
-          context.shadowBlur = 0;
-          context.strokeStyle = colors.surfaceEdge;
-          context.lineWidth = 2;
-          context.stroke();
-          context.fillStyle = current.theme === 'editorial' ? colors.background : colors.background;
-          context.font = '600 10px ui-monospace, monospace';
-          context.textAlign = 'center';
-          context.fillText(String(index + 1).padStart(2, '0'), bumper.position.x, bumper.position.y + 4);
-        });
+          const gateAngles = orbiter.gateCount === 2 ? [0, Math.PI] : [0];
+          gateAngles.forEach((gateAngle) => {
+            const gateX = centerX + Math.cos(gateAngle) * radius;
+            const gateY = centerY + Math.sin(gateAngle) * radius;
+            context.save();
+            context.translate(gateX, gateY);
+            context.rotate(Math.PI / 4);
+            context.globalAlpha = 0.72;
+            context.fillStyle = colors.background;
+            context.strokeStyle = alternating;
+            context.lineWidth = 1.2;
+            context.fillRect(-3.5, -3.5, 7, 7);
+            context.strokeRect(-3.5, -3.5, 7, 7);
+            context.restore();
+          });
 
-        const balls = Composite.allBodies(engine.world).filter((body) => body.label === BALL_LABEL);
-        balls.forEach((ball) => {
-          const points = trails.get(ball.id) ?? [];
-          if (!pausedRef.current) points.unshift({ x: ball.position.x, y: ball.position.y, alpha: 1 });
-          const maxTrail = Math.round(current.trails / 3) + 2;
-          points.splice(maxTrail);
-          points.forEach((point, index) => {
-            point.alpha *= 0.955;
-            const progress = 1 - index / Math.max(1, points.length);
-            context.globalAlpha = point.alpha * progress * 0.32;
-            context.fillStyle = colors.accent;
+          context.globalAlpha = current.theme === 'editorial' ? 0.1 : 0.075;
+          context.strokeStyle = alternating;
+          context.beginPath(); context.moveTo(centerX, centerY); context.lineTo(x, y); context.stroke();
+          context.globalAlpha = 1;
+
+          if (!pausedRef.current) orbiter.trail.unshift({ x, y, alpha: 1 });
+          const maxTrail = 3 + Math.round(current.trails / 2.6);
+          orbiter.trail.splice(maxTrail);
+          orbiter.trail.forEach((point, trailIndex) => {
+            point.alpha *= 0.964;
+            const progress = 1 - trailIndex / Math.max(1, orbiter.trail.length);
+            context.globalAlpha = point.alpha * progress * 0.38;
+            context.fillStyle = alternating;
             context.beginPath();
-            context.arc(point.x, point.y, Math.max(1, ball.circleRadius! * progress * 0.72), 0, Math.PI * 2);
+            context.arc(point.x, point.y, Math.max(0.8, orbiter.size * progress * 0.7), 0, TAU);
             context.fill();
           });
           context.globalAlpha = 1;
-          trails.set(ball.id, points);
 
-          const gradient = context.createRadialGradient(
-            ball.position.x - 6, ball.position.y - 7, 1,
-            ball.position.x, ball.position.y, ball.circleRadius!,
-          );
-          gradient.addColorStop(0, colors.text);
-          gradient.addColorStop(0.25, colors.accent);
-          gradient.addColorStop(1, colors.secondary);
-          context.shadowColor = colors.accent;
-          context.shadowBlur = current.theme === 'luminous' ? 24 : 7;
-          context.fillStyle = gradient;
-          context.beginPath(); context.arc(ball.position.x, ball.position.y, ball.circleRadius!, 0, Math.PI * 2); context.fill();
+          const marble = context.createRadialGradient(x - orbiter.size * 0.32, y - orbiter.size * 0.38, 1, x, y, orbiter.size);
+          marble.addColorStop(0, colors.text);
+          marble.addColorStop(0.23, alternating);
+          marble.addColorStop(1, colors.surface);
+          context.shadowColor = alternating;
+          context.shadowBlur = current.theme === 'luminous' ? 25 : 7;
+          context.fillStyle = marble;
+          context.beginPath(); context.arc(x, y, orbiter.size, 0, TAU); context.fill();
           context.shadowBlur = 0;
+          context.strokeStyle = colors.surfaceEdge;
+          context.lineWidth = 1;
+          context.stroke();
         });
 
-        for (let i = pulses.length - 1; i >= 0; i -= 1) {
-          const pulse = pulses[i];
+        const chordIndex = Math.floor(musicTime / 16000) % CHORD_ROOTS.length;
+        const centerGlow = context.createRadialGradient(centerX - 12, centerY - 14, 2, centerX, centerY, Math.max(48, innerRadius * 0.58));
+        centerGlow.addColorStop(0, colors.text);
+        centerGlow.addColorStop(0.18, colors.accent);
+        centerGlow.addColorStop(0.55, colors.surface);
+        centerGlow.addColorStop(1, colors.background);
+        context.shadowColor = colors.accent;
+        context.shadowBlur = current.theme === 'luminous' ? 38 : 8;
+        context.fillStyle = centerGlow;
+        context.beginPath(); context.arc(centerX, centerY, Math.max(42, innerRadius * 0.52), 0, TAU); context.fill();
+        context.shadowBlur = 0;
+        context.fillStyle = colors.background;
+        context.textAlign = 'center';
+        context.font = '600 9px ui-monospace, monospace';
+        context.fillText(`PHASE 0${chordIndex + 1}`, centerX, centerY - 2);
+        context.globalAlpha = 0.65;
+        context.font = '8px ui-monospace, monospace';
+        context.fillText(`${active.length} VOICES`, centerX, centerY + 13);
+        context.globalAlpha = 1;
+
+        for (let index = pulses.length - 1; index >= 0; index -= 1) {
+          const pulse = pulses[index];
           context.globalAlpha = pulse.alpha;
           context.strokeStyle = pulse.color;
-          context.lineWidth = 3;
-          context.beginPath(); context.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2); context.stroke();
-          pulse.radius += 2.4;
-          pulse.alpha *= 0.925;
-          if (pulse.alpha < 0.025) pulses.splice(i, 1);
+          context.lineWidth = 2.2;
+          context.beginPath(); context.arc(pulse.x, pulse.y, pulse.radius, 0, TAU); context.stroke();
+          pulse.radius += 1.9;
+          pulse.alpha *= 0.934;
+          if (pulse.alpha < 0.025) pulses.splice(index, 1);
         }
         context.globalAlpha = 1;
-        context.restore();
       };
 
       const loop = (now: number) => {
         const frameTime = Math.min(50, now - previous);
         previous = now;
         const current = settingsRef.current;
-        engine.gravity.y = 0.45 + current.energy / 75;
+        const count = Math.min(orbiters.length, 5 + Math.round(current.density / 14));
+        const { centerX, centerY, outerRadius, innerRadius, step } = getLayout(count);
 
         if (!pausedRef.current) {
-          accumulator += frameTime;
-          spawnElapsed += frameTime;
-          const interval = 1700 - current.density * 11 - current.energy * 4;
-          if (spawnElapsed > Math.max(320, interval)) {
-            spawnBall();
-            spawnElapsed = 0;
-          }
-          while (accumulator >= 1000 / 60) {
-            Engine.update(engine, 1000 / 60);
-            accumulator -= 1000 / 60;
+          musicTime += frameTime;
+          const chordIndex = Math.floor(musicTime / 16000);
+          if (current.soundEnabled && audio.ready && chordIndex !== lastChord) {
+            lastChord = chordIndex;
+            audio.playChord(CHORD_ROOTS[chordIndex % CHORD_ROOTS.length], current.scale, current.theme);
           }
 
-          Composite.allBodies(engine.world)
-            .filter((body) => body.label === BALL_LABEL && body.position.y > WORLD.height + 90)
-            .forEach((body) => {
-              trails.delete(body.id);
-              Composite.remove(engine.world, body);
-            });
+          const baseSpeed = 0.000105 + current.energy * 0.0000019;
+          orbiters.slice(0, count).forEach((orbiter, index) => {
+            const previousGate = Math.floor(orbiter.angle / (TAU / orbiter.gateCount));
+            const driftDepth = current.drift * 0.0005;
+            const drift = 1 + Math.sin(musicTime * (0.000021 + index * 0.0000027) + orbiter.phase) * driftDepth;
+            orbiter.angle += orbiter.direction * baseSpeed * orbiter.ratio * drift * frameTime;
+            const nextGate = Math.floor(orbiter.angle / (TAU / orbiter.gateCount));
+
+            if (nextGate !== previousGate) {
+              const radius = innerRadius + step * index;
+              const x = centerX + Math.cos(orbiter.angle) * radius;
+              const y = centerY + Math.sin(orbiter.angle) * radius;
+              const palette = THEMES[current.theme].colors;
+              const chordRoot = CHORD_ROOTS[Math.floor(musicTime / 16000) % CHORD_ROOTS.length];
+              const note = chordRoot + orbiter.note;
+              if (current.soundEnabled) {
+                audio.play(note, 0.48 + index / count * 0.32, current.scale, current.theme, x / displayWidth * 1.6 - 0.8);
+              }
+              pulses.push({ x, y, radius: orbiter.size + 5, alpha: 0.84, color: index % 2 ? palette.secondary : palette.primary });
+            }
+          });
         }
+
         draw();
         raf = requestAnimationFrame(loop);
       };
 
-      for (let i = 0; i < 5; i += 1) spawnBall();
       raf = requestAnimationFrame(loop);
-
       return () => {
         cancelAnimationFrame(raf);
         observer.disconnect();
-        Events.off(engine, 'collisionStart');
-        Composite.clear(engine.world, false);
-        Engine.clear(engine);
       };
     }, [audio, seed]);
 
     return (
       <div className="stage-shell" onPointerDown={onWakeAudio}>
-        <canvas ref={canvasRef} className="instrument-stage" aria-label="Interactive marble orchestra" />
+        <canvas ref={canvasRef} className="instrument-stage" aria-label="Perpetual orbital marble clock" />
         {!audioReady && settings.soundEnabled && (
           <button className="sound-gate" onClick={onWakeAudio}>
             <span className="sound-gate__icon">◉</span>
-            <span>
-              <strong>Enter the orchestra</strong>
-              <small>Tap to enable sound</small>
-            </span>
+            <span><strong>Start the clock</strong><small>Tap to enable the score</small></span>
           </button>
         )}
         <div className="stage-caption" aria-hidden="true">
-          <span>COLLISION SCORE</span>
-          <span>LIVE / GENERATIVE</span>
+          <span>ORBITAL SCORE</span>
+          <span>PERPETUAL / POLYRHYTHMIC</span>
         </div>
       </div>
     );

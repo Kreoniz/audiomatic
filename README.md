@@ -1,10 +1,11 @@
 # Audiomatic
 
-A responsive, browser-only marble orchestra for creating generative audiovisual performances and saving them as videos.
+A responsive, browser-only orbital clock for creating generative audiovisual performances and saving them as videos.
 
 ## What is included
 
-- Deterministic Matter.js physics with fixed-timestep simulation
+- Perpetual concentric motion with near-rational orbital speeds and gentle phase drift
+- Slow harmonic progression with polyrhythmic note triggers
 - Collision-driven Web Audio synthesis
 - Luminous, tactile, and editorial art directions
 - Curated energy, density, trail, scale, and sound controls

@@ -5,6 +5,7 @@ export interface InstrumentSettings {
   theme: ThemeId;
   energy: number;
   density: number;
+  drift: number;
   trails: number;
   scale: ScaleId;
   soundEnabled: boolean;
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS: InstrumentSettings = {
   theme: 'luminous',
   energy: 48,
   density: 42,
+  drift: 34,
   trails: 66,
   scale: 'pentatonic',
   soundEnabled: true,
