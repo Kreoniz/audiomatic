@@ -187,7 +187,7 @@ export class AudioEngine {
     filter.frequency.value = 720 + (100 - warmth) * 22;
     filter.Q.value = 0.55;
     chordGain.gain.setValueAtTime(0.0001, now);
-    chordGain.gain.exponentialRampToValueAtTime(0.034, now + 0.9);
+    chordGain.gain.exponentialRampToValueAtTime(0.034, now + 0.24);
     chordGain.gain.setValueAtTime(0.034, now + Math.max(1, duration - 1.4));
     chordGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
     chordGain.connect(filter).connect(this.master);

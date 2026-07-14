@@ -4,10 +4,11 @@ A responsive, browser-only orbital clock for creating generative audiovisual per
 
 ## What is included
 
-- Perpetual concentric motion with near-rational orbital speeds and gentle phase drift
-- Tempo-quantized orbit events, evolving arpeggios, bass pulse, and overlapping harmony
+- Perpetual concentric motion with tempo-locked orbital periods and gentle phase drift
+- Strict audiovisual causality: every note begins on a visible threshold crossing
+- The inner sphere advances harmony and bass; outer spheres play the melody
 - Adjustable key, scale, progression, rhythm, warmth, space, and note length
-- Collision-driven Web Audio synthesis
+- Threshold-driven Web Audio synthesis
 - Luminous, tactile, and editorial art directions
 - Curated energy, density, trail, scale, and sound controls
 - Local settings persistence

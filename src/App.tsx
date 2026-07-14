@@ -97,7 +97,7 @@ export function App() {
         </a>
         <div className="topbar__meta">
           <span>ORBITAL CLOCK</span>
-          <span className="status-pill"><i /> GENERATIVE</span>
+          <span className="status-pill"><i /> AUDIOVISUAL</span>
         </div>
       </header>
 
@@ -199,7 +199,7 @@ export function App() {
           </label>
 
           <label className="select-control">
-            <span><strong>Rhythm</strong><small>Density of the shared beat grid</small></span>
+            <span><strong>Rhythm</strong><small>Speed of the orbital polyrhythm</small></span>
             <select value={settings.rhythm} onChange={(event) => patchSettings({ rhythm: event.target.value as RhythmId })}>
               <option value="sparse">Sparse</option>
               <option value="flowing">Flowing</option>
@@ -214,19 +214,19 @@ export function App() {
           </div>
 
           <label className="toggle-control">
-            <span><strong>Harmonic bed</strong><small>Continuous overlapping chords</small></span>
+            <span><strong>Harmonic bed</strong><small>Inner sphere opens each chord</small></span>
             <input type="checkbox" checked={settings.padEnabled} onChange={(event) => patchSettings({ padEnabled: event.target.checked })} />
             <i />
           </label>
 
           <label className="toggle-control">
-            <span><strong>Bass pulse</strong><small>Anchors the orbital rhythm</small></span>
+            <span><strong>Bass pulse</strong><small>Follows the inner sphere gate</small></span>
             <input type="checkbox" checked={settings.bassEnabled} onChange={(event) => patchSettings({ bassEnabled: event.target.checked })} />
             <i />
           </label>
 
           <label className="toggle-control">
-            <span><strong>Sound engine</strong><small>Quantized generative score</small></span>
+            <span><strong>Sound engine</strong><small>Every note comes from a crossing</small></span>
             <input
               type="checkbox"
               checked={settings.soundEnabled}
